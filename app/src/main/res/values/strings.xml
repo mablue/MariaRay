@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">MariaRay</string>
+    <string name="hint_input">Sub URL / base64 / paste configs (ss://, vmess://, ...)</string>
+    <string name="btn_filter">Filter</string>
+    <string name="btn_stop">Stop</string>
+    <string name="btn_copy">Copy</string>
+    <string name="status_ready">Ready</string>
+</resources>
