@@ -31,13 +31,19 @@ class XrayRunner(context: Context, private val workDir: File) {
         }
     }
 
-    fun testHttp(link: String, port: Int, url: String, expected: Int): Boolean {
+    fun testHttp(link: String, port: Int): Boolean {
         val cfg = ConfigParser.toXrayConfig(link, port) ?: return false
         val f = File(workDir, "c2_$port.json").apply { writeText(cfg) }
         val p = start(f) ?: return false
         return try {
             if (!waitPort(port)) return false
-            httpCode(port, url) == expected
+            // Try each probe in order; stop on first 2xx/expected
+            for ((url, expected) in Probes.HTTP) {
+                val code = httpCode(port, url)
+                if (code == expected) return true
+                if (code in 200..299) return true
+            }
+            false
         } finally {
             try { p.destroyForcibly() } catch (_: Exception) {}
             FilterEngine.unregisterProc(p)

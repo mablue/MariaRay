@@ -90,7 +90,7 @@ object FilterEngine {
                     sem.withPermit {
                         if (stopped) return@withPermit
                         try {
-                            if (runner.testHttp(link, 20000 + idx, "http://cp.cloudflare.com/generate_204", 204))
+                            if (runner.testHttp(link, 20000 + idx))
                                 stage2.add(link)
                         } catch (_: Exception) {}
                         val n = c2.incrementAndGet()

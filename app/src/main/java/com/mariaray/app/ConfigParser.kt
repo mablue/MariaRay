@@ -4,7 +4,9 @@ import org.json.JSONObject
 import java.net.URI
 
 object ConfigParser {
-    private const val DNS = "\"dns\":{\"servers\":[\"1.1.1.1\",\"8.8.8.8\",\"1.0.0.1\"]}"
+    private val DNS: String by lazy {
+        "\"dns\":{\"servers\":[" + Probes.DNS.joinToString(",") { "\"$it\"" } + "]}"
+    }
     private const val DEFAULT_FP = "chrome"
 
     private fun ssBody(link: String): String =

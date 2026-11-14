@@ -67,6 +67,28 @@ object DebugReport {
             Socket().use { it.connect(InetSocketAddress("cp.cloudflare.com", 443), 3000) }
             "connected"
         }
+        out += test("HTTP probes (direct)") {
+            val c = OkHttpClient.Builder()
+                .connectTimeout(4, TimeUnit.SECONDS).readTimeout(4, TimeUnit.SECONDS).build()
+            val sb = StringBuilder()
+            for ((url, expected) in Probes.HTTP) {
+                val code = try {
+                    c.newCall(Request.Builder().url(url).build()).execute().use { it.code }
+                } catch (_: Exception) { 0 }
+                val ok = code == expected || code in 200..299
+                sb.append(if (ok) "[OK] " else "[--] ").append("$code  $url").append('\n')
+            }
+            sb.toString().trimEnd()
+        }
+        out += test("DNS fallback list") {
+            val sb = StringBuilder()
+            for (d in Probes.DNS) {
+                val r = try { InetAddress.getByName(d).hostAddress ?: "?" }
+                        catch (_: Exception) { "FAIL" }
+                sb.append("$d → $r").append('\n')
+            }
+            sb.toString().trimEnd()
+        }
         out += test("HTTP 204 (direct)") {
             val c = OkHttpClient.Builder()
                 .connectTimeout(5, TimeUnit.SECONDS).readTimeout(5, TimeUnit.SECONDS).build()
