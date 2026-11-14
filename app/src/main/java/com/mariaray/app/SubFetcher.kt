@@ -30,6 +30,8 @@ object SubFetcher {
         return out.distinct()
     }
 
+    fun parseSubscriptionText(body: String): List<String> = parseSubscription(body)
+
     private fun fetch(url: String, client: OkHttpClient): String {
         val req = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0").build()
         client.newCall(req).execute().use { return it.body?.string() ?: "" }

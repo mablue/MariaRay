@@ -1,8 +1,11 @@
 <resources>
     <string name="app_name">MariaRay</string>
-    <string name="hint_input">Sub URL / base64 / paste configs (ss://, vmess://, ...)</string>
+    <string name="hint_input">Sub URL / base64 / configs (ss://, vmess://, ...)</string>
+    <string name="hint_search">Search query (blank = defaults)</string>
     <string name="btn_filter">Filter</string>
     <string name="btn_stop">Stop</string>
     <string name="btn_copy">Copy</string>
+    <string name="btn_search">Search Subs</string>
+    <string name="btn_debug">Debug</string>
     <string name="status_ready">Ready</string>
 </resources>
