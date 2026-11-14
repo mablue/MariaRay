@@ -61,7 +61,7 @@ class XrayRunner(context: Context, private val workDir: File) {
     private fun start(cfg: File): Process? = try {
         val p = ProcessBuilder(binPath, "run", "-c", cfg.absolutePath)
             .redirectErrorStream(true)
-            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            .redirectOutput(ProcessBuilder.Redirect.to(File("/dev/null")))
             .start()
         FilterEngine.registerProc(p)
         p

@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONObject
 import java.io.File
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -91,6 +92,57 @@ object DebugReport {
         out += test("Gen Xray VMess") {
             val c = ConfigParser.toXrayConfig(sampleVmess, 25002)
             if (c == null) "null" else "${c.length} chars"
+        }
+        out += test("VLESS+fp JSON valid") {
+            val sample = "vless://00000000-0000-0000-0000-000000000000@1.1.1.1:443?security=tls&sni=example.com&type=tcp&fp=chrome#test"
+            val c = ConfigParser.toXrayConfig(sample, 25004) ?: return@test "null"
+            try {
+                val o = JSONObject(c)
+                val ob = o.getJSONArray("outbounds").getJSONObject(0)
+                val ss = ob.optJSONObject("streamSettings") ?: return@test "no streamSettings"
+                val tls = ss.optJSONObject("tlsSettings") ?: return@test "no tlsSettings"
+                val fp = tls.optString("fingerprint")
+                if (fp != "chrome") return@test "fp=$fp (want chrome)"
+                "ok"
+            } catch (e: Exception) { "invalid JSON: ${e.message}" }
+        }
+        out += test("VLESS+reality JSON valid") {
+            val sample = "vless://00000000-0000-0000-0000-000000000000@1.1.1.1:443?security=reality&sni=example.com&fp=chrome&pbk=abc123&sid=0123abcd&type=tcp&flow=xtls-rprx-vision#test"
+            val c = ConfigParser.toXrayConfig(sample, 25005) ?: return@test "null"
+            try {
+                val o = JSONObject(c)
+                val ob = o.getJSONArray("outbounds").getJSONObject(0)
+                val ss = ob.optJSONObject("streamSettings") ?: return@test "no streamSettings"
+                if (ss.optString("security") != "reality") return@test "sec=${ss.optString("security")}"
+                val rs = ss.optJSONObject("realitySettings") ?: return@test "no realitySettings"
+                if (rs.optString("publicKey") != "abc123") return@test "pbk=${rs.optString("publicKey")}"
+                if (rs.optString("shortId") != "0123abcd") return@test "sid=${rs.optString("shortId")}"
+                val user = ob.getJSONObject("settings").getJSONArray("vnext")
+                    .getJSONObject(0).getJSONArray("users").getJSONObject(0)
+                if (user.optString("flow") != "xtls-rprx-vision") return@test "flow=${user.optString("flow")}"
+                "ok"
+            } catch (e: Exception) { "invalid JSON: ${e.message}" }
+        }
+        out += test("VLESS+ws+fp JSON valid") {
+            val sample = "vless://00000000-0000-0000-0000-000000000000@1.1.1.1:443?security=tls&sni=example.com&type=ws&path=%2Fws&host=example.com&fp=firefox#test"
+            val c = ConfigParser.toXrayConfig(sample, 25006) ?: return@test "null"
+            try {
+                val o = JSONObject(c)
+                val ob = o.getJSONArray("outbounds").getJSONObject(0)
+                val ss = ob.optJSONObject("streamSettings") ?: return@test "no streamSettings"
+                if (ss.optString("network") != "ws") return@test "net=${ss.optString("network")}"
+                val tls = ss.optJSONObject("tlsSettings") ?: return@test "no tlsSettings"
+                if (tls.optString("fingerprint") != "firefox") return@test "fp=${tls.optString("fingerprint")}"
+                "ok"
+            } catch (e: Exception) { "invalid JSON: ${e.message}" }
+        }
+        out += test("Default fp applied (no fp in link)") {
+            val sample = "vless://00000000-0000-0000-0000-000000000000@1.1.1.1:443?security=tls&sni=example.com&type=tcp#test"
+            val c = ConfigParser.toXrayConfig(sample, 25007) ?: return@test "null"
+            val o = JSONObject(c)
+            val ob = o.getJSONArray("outbounds").getJSONObject(0)
+            val tls = ob.getJSONObject("streamSettings").optJSONObject("tlsSettings") ?: return@test "no tlsSettings"
+            "fp=${tls.optString("fingerprint")}"
         }
         out += test("Xray SOCKS start") {
             val cfg = ConfigParser.toXrayConfig(sampleSs, 25003) ?: return@test "config null"
