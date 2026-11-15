@@ -41,6 +41,41 @@ object DebugReport {
         out += test("Device") {
             "${Build.MANUFACTURER} ${Build.MODEL} — Android ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE})"
         }
+        out += test("Xray path candidates") {
+            fun d(f: File) = "path=${f.absolutePath}\nexists=${f.exists()} exec=${f.canExecute()} size=${f.length()}"
+            val native = File(context.applicationInfo.nativeLibraryDir, "libxray.so")
+            val filesCopy = File(context.filesDir, "xray")
+            val cacheCopy = File(context.cacheDir, "xray")
+            "nativeLibraryDir:\n${d(native)}\n\nfilesDir:\n${d(filesCopy)}\n\ncacheDir:\n${d(cacheCopy)}"
+        }
+        out += test("Xray exec per-path") {
+            val cfg = File(context.cacheDir, "dbg_exec.json")
+            cfg.writeText("""{"log":{"loglevel":"warning"},"inbounds":[],"outbounds":[{"protocol":"freedom"}]}""")
+            val paths = listOf(
+                File(context.applicationInfo.nativeLibraryDir, "libxray.so"),
+                File(context.filesDir, "xray"),
+                File(context.cacheDir, "xray")
+            ).filter { it.exists() }
+            if (paths.isEmpty()) { cfg.delete(); return@test "no candidates" }
+            val sb = StringBuilder()
+            for (c in paths) {
+                try {
+                    val p = ProcessBuilder(c.absolutePath, "version").redirectErrorStream(true).start()
+                    val out = p.inputStream.bufferedReader().readText().take(120).replace("\n", " | ")
+                    p.waitFor()
+                    sb.append("[OK] ${c.parentFile.name}/xray → $out").append('\n')
+                } catch (e: Exception) {
+                    sb.append("[FAIL] ${c.parentFile.name}/xray → ${e.javaClass.simpleName}: ${e.message}").append('\n')
+                }
+            }
+            cfg.delete()
+            sb.toString().trimEnd()
+        }
+        out += test("Exec error log") {
+            val workDir = File(context.filesDir, "filter")
+            val f = File(workDir, "exec_error.txt")
+            if (!f.exists()) "(no exec errors — good sign or Stage 2 not run yet)" else f.readText().lines().take(10).joinToString("\n")
+        }
         out += test("Xray binary") {
             val x = File(context.filesDir, "xray")
             "path=${x.absolutePath}\nexists=${x.exists()}\nsize=${x.length()}B\nexec=${x.canExecute()}"
