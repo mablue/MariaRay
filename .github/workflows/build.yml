@@ -19,32 +19,24 @@ jobs:
         run: |
           set -e
           SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          echo "Using SDK at: $SDK"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
-
-          # Locate sdkmanager (cmdline-tools dir name varies between runners)
           CT=""
           for d in "$SDK/cmdline-tools/latest/bin" "$SDK/cmdline-tools/16.0/bin" "$SDK/cmdline-tools/15.0/bin" "$SDK/tools/bin"; do
             if [ -x "$d/sdkmanager" ]; then CT="$d"; break; fi
           done
-          if [ -z "$CT" ]; then
-            CT="$(dirname "$(find "$SDK" -name sdkmanager -type f 2>/dev/null | head -1)")"
-          fi
-          echo "Using sdkmanager: $CT/sdkmanager"
+          if [ -z "$CT" ]; then CT="$(dirname "$(find "$SDK" -name sdkmanager -type f 2>/dev/null | head -1)")"; fi
           echo "$CT" >> "$GITHUB_PATH"
-
-          # Accept all licenses
           yes | "$CT/sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$CT/sdkmanager" --install "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -3 || true
 
-          # Install required packages (ignore if already present)
-          "$CT/sdkmanager" --install "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -5 || true
-
-          # Verify
-          echo "--- installed platforms ---"
-          ls "$SDK/platforms" 2>/dev/null || true
-          echo "--- installed build-tools ---"
-          ls "$SDK/build-tools" 2>/dev/null || true
+      - name: Verify keystore
+        run: |
+          if [ ! -f app/mariaray.jks ]; then
+            echo "ERROR: app/mariaray.jks missing."
+            exit 1
+          fi
+          ls -la app/mariaray.jks
 
       - name: Download Xray-core (arm64-v8a)
         run: |
@@ -61,12 +53,12 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Build release APK
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: mariaray-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: mariaray
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error

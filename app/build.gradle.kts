@@ -3,6 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val buildNum = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
+
 android {
     namespace = "com.mariaray.app"
     compileSdk = 34
@@ -11,19 +13,30 @@ android {
         applicationId = "com.mariaray.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = buildNum
+        versionName = "1.$buildNum"
         ndk { abiFilters += listOf("arm64-v8a") }
+    }
+
+    signingConfigs {
+        create("stable") {
+            storeFile = file("mariaray.jks")
+            storePassword = "MariaRay2024!"
+            keyAlias = "mariaray"
+            keyPassword = "MariaRay2024!"
+        }
     }
 
     buildTypes {
         debug {
             isMinifyEnabled = false
             isShrinkResources = false
+            signingConfig = signingConfigs.getByName("stable")
         }
         release {
             isMinifyEnabled = false
             isShrinkResources = false
+            signingConfig = signingConfigs.getByName("stable")
         }
     }
 
