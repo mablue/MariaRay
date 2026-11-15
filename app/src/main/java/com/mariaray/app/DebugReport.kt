@@ -202,22 +202,46 @@ object DebugReport {
             "fp=${tls.optString("fingerprint")}"
         }
         out += test("Xray SOCKS start") {
-            val cfg = ConfigParser.toXrayConfig(sampleSs, 25003) ?: return@test "config null"
+            val cfg = ConfigParser.toXrayConfig(sampleSs, 25003) ?: throw Exception("config null")
             val f = File(context.cacheDir, "dbg_xray.json").apply { writeText(cfg) }
-            val p = try {
-                ProcessBuilder(File(context.filesDir, "xray").absolutePath, "run", "-c", f.absolutePath)
-                    .redirectErrorStream(true).start()
-            } catch (e: Exception) { f.delete(); return@test "start failed: ${e.message}" }
+            val runner = XrayRunner(context, File(context.filesDir, "filter").apply { mkdirs() })
+            val candidatePaths = runner.binaryCandidates()
+            if (candidatePaths.isEmpty()) { f.delete(); throw Exception("no xray binary candidates") }
+            var p: Process? = null
+            var lastErr = ""
+            for (cand in candidatePaths) {
+                val path = cand.substringBefore(" (")
+                try {
+                    p = ProcessBuilder(path, "run", "-c", f.absolutePath)
+                        .redirectErrorStream(true).start()
+                    break
+                } catch (e: Exception) { lastErr = "$path -> ${e.message}" }
+            }
+            if (p == null) { f.delete(); throw Exception("all candidates failed: $lastErr") }
             try {
                 var ready = false
-                for (i in 1..20) {
+                for (i in 1..30) {
                     try {
                         Socket().use { s -> s.connect(InetSocketAddress("127.0.0.1", 25003), 100) }
                         ready = true; break
                     } catch (_: Exception) { Thread.sleep(50) }
                 }
-                "ready=$ready"
+                if (!ready) throw Exception("process started but SOCKS port not ready in 1.5s")
+                "ready=true (via ${p.javaClass.simpleName})"
             } finally { p.destroyForcibly(); f.delete() }
+        }
+        out += test("GitHub repo URL detection") {
+            val a = SubFetcher.isGithubRepoUrl("https://github.com/MhdiTaheri/V2rayCollector")
+            val b = SubFetcher.isGithubRepoUrl("https://raw.githubusercontent.com/x/y/sub.txt")
+            val c = SubFetcher.isGithubRepoUrl("https://github.com/user/repo/tree/main/data")
+            "repo=$a, raw=$b, subpath=$c"
+        }
+        out += test("GitHub repo discovery") {
+            val cl = OkHttpClient.Builder()
+                .connectTimeout(5, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
+            val subs = SubFetcher.discoverGithubSubUrls("https://github.com/MhdiTaheri/V2rayCollector", cl)
+            if (subs.isEmpty()) "no sub files found"
+            else "${subs.size} candidates:\n" + subs.take(5).joinToString("\n") { "  - $it" }
         }
         out += test("Fetch sub URL") {
             val url = "https://raw.githubusercontent.com/v2FreeHub/v2hub-configs/refs/heads/main/Sub-AutoUpdate"
@@ -228,6 +252,10 @@ object DebugReport {
             ).execute().use { it.body?.string() ?: "" }
             val configs = SubFetcher.parseSubscriptionText(body)
             "body=${body.length}B, configs=${configs.size}"
+        }
+        out += test("Xray exec log") {
+            val runner = XrayRunner(context, File(context.filesDir, "filter").apply { mkdirs() })
+            runner.execLogContent()
         }
         return out
     }

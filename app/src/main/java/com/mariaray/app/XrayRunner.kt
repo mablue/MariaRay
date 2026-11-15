@@ -9,30 +9,38 @@ import java.net.Proxy
 import java.net.Socket
 import java.util.concurrent.TimeUnit
 
-class XrayRunner(context: Context, private val workDir: File) {
-    val binPath: String = prepareBinary(context)
-    private val execErrorFile = File(workDir, "exec_error.txt")
+class XrayRunner(private val context: Context, private val workDir: File) {
+    private val execLog = File(workDir, "exec_log.txt")
+    private val candidates: List<File>
 
-    private fun prepareBinary(context: Context): String {
+    init {
         val native = File(context.applicationInfo.nativeLibraryDir, "libxray.so")
         val filesCopy = File(context.filesDir, "xray")
         val cacheCopy = File(context.cacheDir, "xray")
-        val candidates = mutableListOf<File>()
 
-        if (native.exists()) candidates.add(native)
+        if (native.exists()) {
+            try {
+                if (!filesCopy.exists()) { native.copyTo(filesCopy, overwrite = true); filesCopy.setExecutable(true, false) }
+            } catch (_: Exception) {}
+            try {
+                if (!cacheCopy.exists()) { native.copyTo(cacheCopy, overwrite = true); cacheCopy.setExecutable(true, false) }
+            } catch (_: Exception) {}
+        }
 
-        try {
-            if (!filesCopy.exists() && native.exists()) native.copyTo(filesCopy, overwrite = true)
-            if (filesCopy.exists()) { filesCopy.setExecutable(true, false); candidates.add(filesCopy) }
-        } catch (_: Exception) {}
-
-        try {
-            if (!cacheCopy.exists() && native.exists()) native.copyTo(cacheCopy, overwrite = true)
-            if (cacheCopy.exists()) { cacheCopy.setExecutable(true, false); candidates.add(cacheCopy) }
-        } catch (_: Exception) {}
-
-        return candidates.firstOrNull()?.absolutePath ?: native.absolutePath
+        val list = mutableListOf<File>()
+        if (native.exists()) list.add(native)
+        if (filesCopy.exists()) list.add(filesCopy)
+        if (cacheCopy.exists()) list.add(cacheCopy)
+        candidates = list.distinctBy { it.absolutePath }
     }
+
+    fun binaryCandidates(): List<String> = candidates.map {
+        "${it.absolutePath} (exec=${it.canExecute()}, size=${it.length()})"
+    }
+
+    fun execLogContent(): String = try {
+        if (execLog.exists()) execLog.readText().lines().takeLast(20).joinToString("\n") else "(empty)"
+    } catch (_: Exception) { "(read failed)" }
 
     fun testHttp(link: String, port: Int): Boolean {
         val cfg = ConfigParser.toXrayConfig(link, port) ?: return false
@@ -42,8 +50,7 @@ class XrayRunner(context: Context, private val workDir: File) {
             if (!waitPort(port)) return false
             for ((url, expected) in Probes.HTTP) {
                 val code = httpCode(port, url)
-                if (code == expected) return true
-                if (code in 200..299) return true
+                if (code == expected || code in 200..299) return true
             }
             false
         } finally {
@@ -67,43 +74,22 @@ class XrayRunner(context: Context, private val workDir: File) {
     }
 
     private fun start(cfg: File): Process? {
-        val candidates = listOf(
-            File(binPath),
-            File(workDir, "xray"),
-            File("/data/local/tmp/xray")
-        ).filter { it.exists() }.map { it.absolutePath }.distinct()
-
-        if (candidates.isEmpty()) {
-            logExecError("NONE", "no xray binary found anywhere")
-            return null
-        }
-
-        for (path in candidates) {
+        for (c in candidates) {
             try {
-                val p = ProcessBuilder(path, "run", "-c", cfg.absolutePath)
+                val p = ProcessBuilder(c.absolutePath, "run", "-c", cfg.absolutePath)
                     .redirectErrorStream(true)
                     .redirectOutput(ProcessBuilder.Redirect.to(File("/dev/null")))
                     .start()
                 FilterEngine.registerProc(p)
                 return p
             } catch (e: Exception) {
-                logExecError(path, "${e.javaClass.simpleName}: ${e.message}")
+                try {
+                    execLog.appendText("${System.currentTimeMillis()} ${c.absolutePath}: ${e.javaClass.simpleName}: ${e.message}\n")
+                } catch (_: Exception) {}
             }
         }
         return null
     }
-
-    private fun logExecError(path: String, err: String) {
-        try {
-            val f = File(path)
-            val info = "[${System.currentTimeMillis()}] path=$path exists=${f.exists()} exec=${f.canExecute()} size=${f.length()} err=$err\n"
-            execErrorFile.appendText(info)
-        } catch (_: Exception) {}
-    }
-
-    fun readExecErrors(): String = try {
-        if (execErrorFile.exists()) execErrorFile.readText() else "(no errors logged)"
-    } catch (_: Exception) { "(read failed)" }
 
     private fun waitPort(port: Int, t: Int = 1500): Boolean {
         val s = System.currentTimeMillis()
