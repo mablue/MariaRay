@@ -201,6 +201,10 @@ object DebugReport {
             val tls = ob.getJSONObject("streamSettings").optJSONObject("tlsSettings") ?: return@test "no tlsSettings"
             "fp=${tls.optString("fingerprint")}"
         }
+        out += test("Xray tryExecOnce") {
+            val runner = XrayRunner(context, File(context.filesDir, "filter").apply { mkdirs() })
+            runner.tryExecOnce()
+        }
         out += test("Xray SOCKS start") {
             val cfg = ConfigParser.toXrayConfig(sampleSs, 25003) ?: throw Exception("config null")
             val f = File(context.cacheDir, "dbg_xray.json").apply { writeText(cfg) }
