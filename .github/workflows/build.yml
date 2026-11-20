@@ -15,12 +15,29 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Android SDK setup (manual)
+      # ---------- Cache Android SDK packages ----------
+      - name: Cache Android SDK
+        id: cache-sdk
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms/android-34
+            /usr/local/lib/android/sdk/build-tools/34.0.0
+          key: android-sdk-34-v1
+
+      - name: Android SDK setup
         run: |
           set -e
           SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          if [ -d "$SDK/platforms/android-34" ] && [ -d "$SDK/build-tools/34.0.0" ]; then
+            echo "[+] SDK packages present — skipping install."
+            exit 0
+          fi
+
+          echo "[*] Installing SDK packages..."
           CT=""
           for d in "$SDK/cmdline-tools/latest/bin" "$SDK/cmdline-tools/16.0/bin" "$SDK/cmdline-tools/15.0/bin" "$SDK/tools/bin"; do
             if [ -x "$d/sdkmanager" ]; then CT="$d"; break; fi
@@ -28,17 +45,18 @@ jobs:
           if [ -z "$CT" ]; then CT="$(dirname "$(find "$SDK" -name sdkmanager -type f 2>/dev/null | head -1)")"; fi
           echo "$CT" >> "$GITHUB_PATH"
           yes | "$CT/sdkmanager" --licenses >/dev/null 2>&1 || true
-          "$CT/sdkmanager" --install "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -3 || true
+          "$CT/sdkmanager" --install "platforms;android-34" "build-tools;34.0.0" "platform-tools" 2>&1 | tail -3
 
-      - name: Verify keystore
-        run: |
-          if [ ! -f app/mariaray.jks ]; then
-            echo "ERROR: app/mariaray.jks missing."
-            exit 1
-          fi
-          ls -la app/mariaray.jks
+      # ---------- Cache Xray binary ----------
+      - name: Cache Xray binary
+        id: cache-xray
+        uses: actions/cache@v4
+        with:
+          path: app/src/main/jniLibs/arm64-v8a/libxray.so
+          key: xray-v25.4.30-arm64-v8a
 
-      - name: Download Xray-core (arm64-v8a)
+      - name: Download Xray-core (cache miss)
+        if: steps.cache-xray.outputs.cache-hit != 'true'
         run: |
           set -e
           mkdir -p app/src/main/jniLibs/arm64-v8a
@@ -47,14 +65,29 @@ jobs:
           unzip -oq /tmp/xray.zip -d /tmp/xray
           cp /tmp/xray/xray app/src/main/jniLibs/arm64-v8a/libxray.so
           chmod +x app/src/main/jniLibs/arm64-v8a/libxray.so
-          file app/src/main/jniLibs/arm64-v8a/libxray.so
 
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Verify keystore
+        run: |
+          if [ ! -f app/mariaray.jks ]; then
+            echo "ERROR: app/mariaray.jks missing."
+            exit 1
+          fi
+
+      # ---------- Cache ~/.android (AGP internal cache) ----------
+      - name: Cache ~/.android
+        uses: actions/cache@v4
+        with:
+          path: ~/.android
+          key: android-home-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+
+      # ---------- Cache Gradle (auto) ----------
+      - name: Gradle setup (caches ~/.gradle automatically)
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
 
       - name: Build release APK
-        run: gradle :app:assembleRelease --no-daemon --stacktrace
+        run: gradle :app:assembleRelease --no-daemon --build-cache --parallel --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
